@@ -7,7 +7,7 @@
 
 /* Use these parameters for generating times*/ 
 #define RES_TEST_ITERS 10 
-#define MAX_MESG_SIZE 131072 
+#define MAX_MESG_SIZE 1024*1024
 void print_buffer(char mesg[], int mesg_size, int my_rank); 
 double ping_pong(char mesg[], int mesg_size, int iters, MPI_Comm comm, int p, int my_rank);
  /*-------------------------------------------------------------------*/ 
@@ -37,9 +37,11 @@ int main(int argc, char* argv[]) {
 	for(i = 0; i< MAX_MESG_SIZE;i++)
 		message[i] = c;
 
-	elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
-    if(my_rank == 0) {
-	    fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), MPI_Wtick());
+	for(int k = 0; k <=1000; k+=100) {
+		elapsed = ping_pong(message, k*1024, RES_TEST_ITERS, comm, p, my_rank);
+		if(my_rank == 0) {
+			fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, Clock tick = %8.5e\n", k, elapsed/(2*RES_TEST_ITERS), MPI_Wtick());
+		} 
 	}	
 
 	MPI_Finalize();

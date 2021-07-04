@@ -10,10 +10,11 @@
 #define MAX_MESG_SIZE 131072 
 void print_buffer(char mesg[], int mesg_size, int my_rank); 
 double ping_pong(char mesg[], int mesg_size, int iters, MPI_Comm comm, int p, int my_rank);
+double ping_pong_1(char mesg[], int mesg_size, int iters, MPI_Comm comm, int p, int my_rank);
  /*-------------------------------------------------------------------*/ 
 int main(int argc, char* argv[]) { 
 	int i; 
-	double elapsed; 
+	double elapsed, elapsed_1; 
 	char message[MAX_MESG_SIZE]; 
 	char c = 'B'; 
 	MPI_Comm comm;
@@ -36,11 +37,15 @@ int main(int argc, char* argv[]) {
 		c = 'A';
 	for(i = 0; i< MAX_MESG_SIZE;i++)
 		message[i] = c;
+    for(int j = 0; j < 20; j++){
+	    elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
+	    elapsed_1 = ping_pong_1(message, 0, RES_TEST_ITERS, comm, p, my_rank);
+        if(my_rank == 0) {
+	        fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, C_Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), (double)clock());
+	        fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, MPI_Clock tick = %8.5e\n", i, elapsed_1/(2*RES_TEST_ITERS), MPI_Wtick());
+	    }	
+    }
 
-	elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
-    if(my_rank == 0) {
-	    fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), MPI_Wtick());
-	}	
 
 	MPI_Finalize();
 	return 0;
@@ -51,10 +56,36 @@ double ping_pong(char mesg[], int mesg_size, int iters, MPI_Comm comm,
                 int p, int my_rank){
         int i;
         MPI_Status status;
-        double start;
+        clock_t start;
 
         if (my_rank == 0) {
-                start =MPI_Wtime();
+                start = clock();
+                for(i=0; i<iters; i++){
+                        MPI_Send(mesg, mesg_size, MPI_CHAR,1,0, comm);
+                        MPI_Recv(mesg, mesg_size, MPI_CHAR,1,0, comm, &status);
+                }
+                double total, end_t;
+                end_t = clock();
+                total = (double)(end_t - start) / CLOCKS_PER_SEC;
+                return total;
+        }else if(my_rank == 1){
+                for (i= 0; i<iters; i++){
+                        MPI_Recv(mesg, mesg_size,MPI_CHAR,0,0, comm, &status);
+                        print_buffer(mesg, mesg_size,1);
+                        MPI_Send(mesg, mesg_size, MPI_CHAR,0,0, comm);
+                }
+        }
+        return 0.0;
+}/* ping _pong */
+
+double ping_pong_1(char mesg[], int mesg_size, int iters, MPI_Comm comm,
+                int p, int my_rank){
+        int i;
+        MPI_Status status;
+        clock_t start;
+
+        if (my_rank == 0) {
+                start = MPI_Wtime();
                 for(i=0; i<iters; i++){
                         MPI_Send(mesg, mesg_size, MPI_CHAR,1,0, comm);
                         MPI_Recv(mesg, mesg_size, MPI_CHAR,1,0, comm, &status);
@@ -69,6 +100,7 @@ double ping_pong(char mesg[], int mesg_size, int iters, MPI_Comm comm,
         }
         return 0.0;
 }/* ping _pong */
+
 
 /*-----------------------------------_*/
 void print_buffer(char mesg[],int mesg_size,int my_rank){

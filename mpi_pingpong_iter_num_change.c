@@ -37,9 +37,11 @@ int main(int argc, char* argv[]) {
 	for(i = 0; i< MAX_MESG_SIZE;i++)
 		message[i] = c;
 
-	elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
-    if(my_rank == 0) {
-	    fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), MPI_Wtick());
+	for(int i = 1; i <=20; i++) {
+		elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
+		if(my_rank == 0) {
+			fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), MPI_Wtick());
+		} 
 	}	
 
 	MPI_Finalize();
