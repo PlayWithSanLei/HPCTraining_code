@@ -44,7 +44,9 @@ int main(int argc, char* argv[]) {
       Print_local_lists(local_A, local_n, 0, my_rank, p, comm);
    } else {
       Read_list(local_A, local_n, my_rank, p, comm);
+#   ifdef DEBUG
       Print_local_lists(local_A, local_n, 0, my_rank, p, comm);
+#   endif
    }
 
    Sort(local_A, global_n, &local_n, my_rank, p, comm);
@@ -120,10 +122,12 @@ void Get_args(int argc, char* argv[], int* global_n_p, int* local_n_p,
    }
 
    *local_n_p = *global_n_p/p;
-   printf("Proc %d > gi = %c, global_n = %d, local_n = %d\n",
+#ifdef DEBUG
+    printf("Proc %d > gi = %c, global_n = %d, local_n = %d\n",
       my_rank, *gi_p, *global_n_p, *local_n_p);
    fflush(stdout);
-
+#endif
+ 
 }  /* Get_args */
 
 /* 读列表 */
@@ -182,14 +186,18 @@ void Sort(int local_A[], int global_n, int* local_n_p, int my_rank,
 
    while (!done && bitmask < p) {
       partner = my_rank ^ bitmask;
-      printf("Proc %d > partner = %d, bitmask = %d\n", 
+#ifdef DEBUG
+ printf("Proc %d > partner = %d, bitmask = %d\n", 
             my_rank, partner, bitmask);
-      if (my_rank < partner) {
+#endif
+           if (my_rank < partner) {
          MPI_Recv(local_A + *local_n_p, *local_n_p, MPI_INT,
             partner, 0, comm, &status);
          /* Note that *local_n_p is updated by Merge */
          Merge(local_A, local_A + *local_n_p, local_n_p); 
+#ifdef DEBUG
          Print_local_lists(local_A, *local_n_p, bitmask, my_rank, p, comm);
+#endif
          bitmask <<= 1;
       } else {
          MPI_Send(local_A, *local_n_p, MPI_INT, partner, 0, comm);
