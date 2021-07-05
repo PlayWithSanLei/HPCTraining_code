@@ -102,9 +102,7 @@ void Get_files(FILE* files[], int* file_count_p) {
    
    while (scanf("%s", filename) != -1) {
       files[i] = fopen(filename, "r");
-#     ifdef DEBUG
       printf("file %d = %s, desc = %p\n", i, filename, files[i]);
-#     endif
       if (files[i] == NULL) {
          fprintf(stderr, "Can't open %s\n", filename);
          fprintf(stderr, "Quitting . . . \n");
@@ -159,7 +157,7 @@ void Prod_cons(int prod_count, int cons_count, FILE* files[],
             }
          }
 #        ifdef DEBUG
-//       Print_queue(my_rank, queue_head);
+         Print_queue(my_rank, queue_head);
 #        endif
          while (queue_head != NULL) {
             tmp_node = Dequeue(&queue_head, &queue_tail, my_rank);
