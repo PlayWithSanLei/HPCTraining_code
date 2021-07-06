@@ -6,7 +6,7 @@ obj = $(patsubst %.c,%,$(src))
 ALL:$(obj)
 
 %:%.c
-	mpicc $< -o $(bin)$@ $(CFLAGS)
+	gcc $< -o $(bin)$@ $(CFLAGS)
 
 clean:
 	-rm -i $(bin)*
