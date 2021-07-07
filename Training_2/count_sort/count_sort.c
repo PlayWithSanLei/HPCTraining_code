@@ -18,13 +18,7 @@ void Count_sort(int a[], int n) {
             else if(a[j] == a[i]&&j<i)
                 count++;
             temp[count] = a[i];
-            printf("xiao:");
-        Print_list(temp);
-        printf("\n");
         }  
-        printf("da:");
-        Print_list(temp);
-        printf("\n");
     }
    memcpy(a, temp, n*sizeof(int));
    free(temp);
@@ -35,9 +29,7 @@ int main() {
     int a[4] = {10,9,8,7};
 
     Count_sort(a, n);
-    for(int i = 0; i < n; i++) {
-        printf("%d ", a[i]);
-    }
-        printf("\n");
+    Print_list(a);
+    printf("\n");
     return 0;
 }

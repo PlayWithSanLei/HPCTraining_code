@@ -134,7 +134,7 @@ void Get_args(int argc, char* argv[], int* global_n_p, int* local_n_p,
 void Read_list(int local_A[], int local_n, int my_rank, int p,
          MPI_Comm comm) {
    int i;
-   int *temp;
+   int *temp = NULL;
 
    if (my_rank == 0) {
       temp = (int*) malloc(p*local_n*sizeof(int));
