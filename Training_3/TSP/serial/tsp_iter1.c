@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "timer.h"
-
 const int INFINITY = 1000000;
 const int NO_CITY = -1;
 const int UNUSED = -2;

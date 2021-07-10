@@ -1,10 +1,12 @@
-/* File:     tsp_rec.c
- * Purpose:  Use recursive depth-first search to solve an instance of the 
- *           travelling salesman problem.
+/* File:     tsp_iter2.c
  *
- * Compile:  gcc -g -Wall -o tsp_rec tsp_rec.c
- *           Needs timer.h
- * Usage:    tsp_rec <matrix_file>
+ * Purpose:  Use iterative depth-first search to solve an instance of the 
+ *           travelling salesman problem.  This version pushes an entire
+ *           copy of a tour onto the stack and it stores ``freed''
+ *           tours in an "avail" stack.
+ *
+ * Compile:  gcc -g -Wall -o tsp_iter2 tsp_iter2.c
+ * Usage:    tsp_iterative <matrix_file>
  *
  * Input:    From a user-specified file, the number of cities
  *           followed by the costs of travelling between the
@@ -26,14 +28,13 @@
  * 5.  The digraph is stored as an adjacency matrix, which is
  *     a one-dimensional array:  digraph[i][j] is computed as
  *     digraph[i*n + j]
- * 6.  Debug option prints verbose output
  *
- * IPP:  Section 6.2.1 (pp. 302 and ff.)
+ * IPP:  Section 6.2.2 (pp. 304 and ff.)
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "timer.h"
-
 const int INFINITY = 1000000;
 const int NO_CITY = -1;
 const int FALSE = 0;
@@ -52,21 +53,25 @@ typedef tour_struct* tour_t;
 #define Last_city(tour) (tour->cities[(tour->count)-1])
 #define Tour_city(tour,i) (tour->cities[(i)])
 
-/* Global Vars:  Except for best_tour, all are constant after initialization */
+typedef struct {
+   tour_t* list;
+   int list_sz;
+}  stack_struct;
+typedef stack_struct* my_stack_t;
+
+/* Global Vars:  Except for best_tour, and avail, all are constant after initialization */
 int n;  /* Number of cities in the problem */
 cost_t* digraph;
 city_t home_town = 0;
-#ifdef DEBUG
-long call_count = 0;
-#endif
 tour_t best_tour;
 #define Cost(city1, city2) (digraph[city1*n + city2])
+my_stack_t avail;
 
 void Usage(char* prog_name);
 void Read_digraph(FILE* digraph_file);
 void Print_digraph(void);
 
-void Depth_first_search(tour_t tour);
+void Iterative_dfs(tour_t tour);
 void Print_tour(tour_t tour, char* title);
 int  Best_tour(tour_t tour); 
 void Update_best_tour(tour_t tour);
@@ -76,6 +81,16 @@ void Remove_last_city(tour_t tour);
 int  Feasible(tour_t tour, city_t city);
 int  Visited(tour_t tour, city_t city);
 void Init_tour(tour_t tour, cost_t cost);
+tour_t Alloc_tour(void);
+void Free_tour(tour_t tour);
+
+my_stack_t Init_stack(void);
+void Push_avail(tour_t tour);
+void Push(my_stack_t stack, tour_t tour);
+tour_t Pop(my_stack_t stack);
+int  Empty(my_stack_t stack);
+void Free_stack(my_stack_t stack);
+void Free_avail(void);
 
 /*------------------------------------------------------------------*/
 int main(int argc, char* argv[]) {
@@ -94,15 +109,27 @@ int main(int argc, char* argv[]) {
 #  ifdef DEBUG
    Print_digraph();
 #  endif   
+   avail = Init_stack();
 
-   best_tour = malloc(sizeof(tour_struct));
+   best_tour = Alloc_tour();
    Init_tour(best_tour, INFINITY);
-   tour = malloc(sizeof(tour_struct));
+#  ifdef DEBUG
+   Print_tour(best_tour, "Best tour");
+   printf("City count = %d\n",  City_count(best_tour));
+   printf("Cost = %d\n\n", Tour_cost(best_tour));
+#  endif
+   tour = Alloc_tour();
    Init_tour(tour, 0);
+#  ifdef DEBUG
+   Print_tour(tour, "Starting tour");
+   printf("City count = %d\n",  City_count(tour));
+   printf("Cost = %d\n\n", Tour_cost(tour));
+#  endif
 
    GET_TIME(start);
-   Depth_first_search(tour);
+   Iterative_dfs(tour);
    GET_TIME(finish);
+   Free_tour(tour);
    
    Print_tour(best_tour, "Best tour");
    printf("Cost = %d\n", best_tour->cost);
@@ -110,16 +137,14 @@ int main(int argc, char* argv[]) {
 
    free(best_tour->cities);
    free(best_tour);
-   free(tour->cities);
-   free(tour);
+   Free_avail();
    free(digraph);
    return 0;
 }  /* main */
 
 /*------------------------------------------------------------------
  * Function:  Init_tour
- * Purpose:   Allocate storage for the cities on the tour, and
- *            initialize the data members
+ * Purpose:   Initialize the data member of allocated tour
  * In args:   
  *    cost:   initial cost of tour
  * Global in:
@@ -130,7 +155,6 @@ int main(int argc, char* argv[]) {
 void Init_tour(tour_t tour, cost_t cost) {
    int i;
 
-   tour->cities = malloc((n+1)*sizeof(city_t));
    tour->cities[0] = 0;
    for (i = 1; i <= n; i++) {
       tour->cities[i] = NO_CITY;
@@ -205,49 +229,48 @@ void Print_digraph(void) {
 
 
 /*------------------------------------------------------------------
- * Function:    Depth_first_search
- * Purpose:     Recursively search for a least-cost tour
+ * Function:    Iterative_dfs
+ * Purpose:     Use a stack variable to implement an iterative version
+ *              of depth-first search
  * In arg:     
- *    tour:     partial tour of cities visited so far.
+ *    tour:     partial tour of cities visited so far (just city 0)
  * Globals in:
  *    n:        total number of cities in the problem
- * Note:
- *    The input tour is modified during execution of search,
+ * Notes:
+ * 1  The input tour is modified during execution of search,
  *    but returned to its original state before returning.
+ * 2. The Update_best_tour function will modify the global var
+ *    best_tour
  */
-void Depth_first_search(tour_t tour) {
+void Iterative_dfs(tour_t tour) {
    city_t nbr;
+   my_stack_t stack;
+   tour_t curr_tour;
 
-#  ifdef DEBUG
-   Print_tour(tour, "Entering DFS");
-   printf("City count = %d\n", City_count(tour));
-   printf("Tour cost = %d\n", Tour_cost(tour));
-   printf("Call count = %ld\n\n", ++call_count);
-#  endif
-
-   if (City_count(tour) == n) {
-      if (Best_tour(tour)) {
-         Update_best_tour(tour);
-#        ifdef DEBUG
-         Print_tour(best_tour, "After Update_best_tour");
-         printf("City count = %d\n", City_count(best_tour));
-         printf("Tour cost = %d\n\n", Tour_cost(best_tour));
-#        endif
+   stack = Init_stack();
+   Push(stack, tour);
+   while (!Empty(stack)) {
+      curr_tour = Pop(stack);
+#     ifdef DEBUG
+      printf("Popped tour = %p and %p\n", curr_tour, curr_tour->cities);
+      Print_tour(curr_tour, "Popped");
+      printf("\n");
+#     endif
+      if (City_count(curr_tour) == n) {
+         if (Best_tour(curr_tour))
+            Update_best_tour(curr_tour);
+      } else {
+         for (nbr = n-1; nbr >= 1; nbr--) 
+            if (Feasible(curr_tour, nbr)) {
+               Add_city(curr_tour, nbr);
+               Push(stack, curr_tour);
+               Remove_last_city(curr_tour);
+            }
       }
-   } else {
-      for (nbr = 1; nbr < n; nbr++) 
-         if (Feasible(tour, nbr)) {
-            Add_city(tour, nbr);
-            Depth_first_search(tour);
-            Remove_last_city(tour);
-         }
+      Free_tour(curr_tour);
    }
-
-#  ifdef DEBUG
-   Print_tour(tour, "Returning from DFS");
-   printf("\n");
-#  endif
-}  /* Depth_first_search */
+   Free_stack(stack);
+}  /* Iterative_dfs */
 
 /*------------------------------------------------------------------
  * Function:    Best_tour
@@ -296,10 +319,11 @@ void Update_best_tour(tour_t tour) {
  *    tour2
  */
 void Copy_tour(tour_t tour1, tour_t tour2) {
-   int i;
+// int i;
 
-   for (i = 0; i <= n; i++)
-     tour2->cities[i] =  tour1->cities[i];
+   memcpy(tour2->cities, tour1->cities, (n+1)*sizeof(city_t));
+// for (i = 0; i <= n; i++)
+//   tour2->cities[i] =  tour1->cities[i];
    tour2->count = tour1->count;
    tour2->cost = tour1->cost;
 }  /* Copy_tour */
@@ -311,6 +335,7 @@ void Copy_tour(tour_t tour1, tour_t tour2) {
  *    city
  * In/out arg:
  *    tour
+ * Note: This should only be called if tour->count >= 1.
  */
 void Add_city(tour_t tour, city_t new_city) {
    city_t old_last_city = Last_city(tour);
@@ -393,3 +418,164 @@ void Print_tour(tour_t tour, char* title) {
       printf("%d ", Tour_city(tour,i));
    printf("\n");
 }  /* Print_tour */
+
+/*------------------------------------------------------------------
+ * Function:  Alloc_tour
+ * Purpose:   Allocate memory for a tour and its members
+ * Global in: n, number of cities
+ * Ret val:   Pointer to a tour_struct with storage allocated for its
+ *            members
+ */
+tour_t Alloc_tour(void) {
+   tour_t tmp;
+
+   if (!Empty(avail))
+      return Pop(avail);
+   else {
+      tmp = malloc(sizeof(tour_struct));
+      tmp->cities = malloc((n+1)*sizeof(city_t));
+      return tmp;
+   }
+}  /* Alloc_tour */
+
+/*------------------------------------------------------------------
+ * Function:  Free_tour
+ * Purpose:   Push a tour onto the avail stack
+ * In arg:    tour
+ */
+void Free_tour(tour_t tour) {
+   Push_avail(tour);
+}  /* Free_tour */
+
+/*------------------------------------------------------------------
+ * Function: Init_stack
+ * Purpose:  Allocate storage for a new stack and initialize members
+ * Out arg:  stack_p
+ */
+my_stack_t Init_stack(void) {
+   int i;
+
+   my_stack_t stack = malloc(sizeof(stack_struct));
+   stack->list = malloc(n*n*sizeof(tour_t));
+   for (i = 0; i < n*n; i++)
+      stack->list[i] = NULL;
+   stack->list_sz = 0;
+
+   return stack;
+}  /* Init_stack */
+
+
+/*------------------------------------------------------------------
+ * Function:    Push_avail
+ * Purpose:     Store a tour in the available list
+ * In arg:      tour
+ * In/out Global:  
+ */
+void Push_avail(tour_t tour) {
+   if (avail->list_sz == n*n) {
+      fprintf(stderr, "Available stack overflow!\n");
+      free(tour->cities);
+      free(tour);
+   } else {
+#     ifdef DEBUG
+      printf("In Push_avail, loc = %d, pushing %p and %p\n",
+            avail->list_sz, tour, tour->cities);
+      Print_tour(tour, "About to be pushed onto avail");
+      printf("\n");
+#     endif
+      avail->list[avail->list_sz] = tour;
+      (avail->list_sz)++;
+   }
+}  /* Push_avail */
+
+/*------------------------------------------------------------------
+ * Function:    Push
+ * Purpose:     Add a new tour to the top of the stack
+ * In arg:      tour
+ * In/out arg:  stack
+ * Error:       If the stack is full, print an error and exit
+ */
+void Push(my_stack_t stack, tour_t tour) {
+   tour_t tmp;
+   if (stack->list_sz == n*n) {
+      fprintf(stderr, "Stack overflow!\n");
+      exit(-1);
+   }
+   tmp = Alloc_tour();
+   Copy_tour(tour, tmp);
+   stack->list[stack->list_sz] = tmp;
+   (stack->list_sz)++;
+}  /* Push */
+
+
+/*------------------------------------------------------------------
+ * Function:  Pop
+ * Purpose:   Reduce the size of the stack by returning the top
+ * In arg:    stack
+ * Ret val:   The tour on the top of the stack
+ * Error:     If the stack is empty, print a message and exit
+ */
+tour_t Pop(my_stack_t stack) {
+   tour_t tmp;
+
+   if (stack->list_sz == 0) {
+      fprintf(stderr, "Trying to pop empty stack!\n");
+      exit(-1);
+   }
+   tmp = stack->list[stack->list_sz-1];
+   stack->list[stack->list_sz-1] = NULL;
+   (stack->list_sz)--;
+   return tmp;
+}  /* Pop */
+
+
+/*------------------------------------------------------------------
+ * Function:  Empty
+ * Purpose:   Determine whether the stack is empty
+ * In arg:    stack
+ * Ret val:   TRUE if empty, FALSE otherwise
+ */
+int  Empty(my_stack_t stack) {
+   if (stack->list_sz == 0)
+      return TRUE;
+   else
+      return FALSE;
+}  /* Empty */
+
+
+/*------------------------------------------------------------------
+ * Function:  Free_stack
+ * Purpose:   Free stack and its members
+ * Out arg:   stack
+ * Note:      Assumes stack is empty
+ */
+void Free_stack(my_stack_t stack) {
+   free(stack->list);
+   free(stack);
+}  /* Free_stack */
+
+/*------------------------------------------------------------------
+ * Function:  Free_avail
+ * Purpose:   Free the stack of available tours
+ * Out arg:   avail
+ */
+void Free_avail(void) {
+   int i;
+   tour_t tmp;
+#  ifdef DEBUG
+   printf("In Free_avail, list_sz = %d\n", avail->list_sz);
+#  endif
+   for (i = 0; i < avail->list_sz; i++) {
+      tmp = avail->list[i];
+      if (tmp != NULL) {
+#        ifdef DEBUG
+         printf("In Free_avail, i = %d, attempting to free %p and %p\n",
+               i, tmp->cities, tmp);
+#        endif
+         free(tmp->cities);
+         free(tmp);
+      }
+   }
+   free(avail->list);
+   free(avail);
+}  /* Free_avail */

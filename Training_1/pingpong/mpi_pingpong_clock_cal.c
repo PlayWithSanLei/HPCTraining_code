@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
 	    elapsed = ping_pong(message, 0, RES_TEST_ITERS, comm, p, my_rank);
 	    elapsed_1 = ping_pong_1(message, 0, RES_TEST_ITERS, comm, p, my_rank);
         if(my_rank == 0) {
-	        fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, C_Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), (double)clock());
+	        fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, C_Clock tick = %8.5e\n", i, elapsed/(2*RES_TEST_ITERS), (double)clock()/CLOCKS_PER_SEC);
 	        fprintf(stderr, "iter: %d, Min ping_ping = %8.5e, MPI_Clock tick = %8.5e\n", i, elapsed_1/(2*RES_TEST_ITERS), MPI_Wtick());
 	    }	
     }
